@@ -211,8 +211,8 @@ const carcavelosBase='PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZH
 function syncMapSource(){
  if(!active)return;
  if(isAroeiroProject()){
-   // Existing explicit source is preserved; offer the embedded drawings for the named house.
-   if(!active.mapSource) {active.mapSource='aroeiro';persist()}
+   // Ensure Aroeiro uses its own embedded plans; preserve placements and routes.
+   if(active.mapSource!=='aroeiro') {active.mapSource='aroeiro';persist()}
  }else if(isCarcavelosProject()){
    if(active.mapSource!=='carcavelos'){active.mapSource='carcavelos';persist()}
  }else if(active.mapSource==='aroeiro'||active.mapSource==='carcavelos'){
