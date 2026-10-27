@@ -271,4 +271,101 @@ function exportJSON(obj,name){const blob=new Blob([JSON.stringify(obj,null,2)],{
 all.onclick=()=>{if(!projects.length)return say('Sem projetos / No projects');exportJSON({format:'montagem-projects-v21',exportedAt:new Date().toISOString(),projects:projects.map(x=>({...x,plans:(x.plans||[]).map(p=>({...p,fileNotIncluded:true}))}))},'montagem_all_projects_'+new Date().toISOString().slice(0,10)+'.json');say('Cópia criada sem fotografias nem anexos / Backup created without photos or attachments');};
 run.onclick=async()=>{const f=pick.files?.[0];if(!f)return say('Selecione um JSON / Select a JSON file');if(f.size>15*1024*1024)return say('Ficheiro demasiado grande / File too large');try{const o=JSON.parse(await f.text());let incoming;if(Array.isArray(o?.projects))incoming=o.projects;else incoming=[o];if(!incoming.length||incoming.length>200)throw Error('Invalid project count');const copy=structuredClone(projects);let added=[];for(const p of incoming){if(!p||typeof p!=='object'||typeof p.name!=='string'||!p.name.trim()||typeof p.id!=='string'||!Array.isArray(p.panels)||!Array.isArray(p.circuits)||!Array.isArray(p.plans))throw Error('Invalid project structure');const obj=structuredClone(p);if(copy.some(x=>x.id===obj.id)){let n=2;while(copy.some(x=>x.id==='APT'+String(n).padStart(3,'0')))n++;const old=obj.id;obj.id='APT'+String(n).padStart(3,'0');obj.name=obj.name+' (cópia / copy)';obj.importedFrom=old;obj.plans=[];obj.passages=(obj.passages||[]).map(x=>({...x}));obj.conduits=(obj.conduits||[]).map(x=>({...x,photos:[]}));}else{obj.plans=[];obj.conduits=(obj.conduits||[]).map(x=>({...x,photos:[]}));}copy.push(obj);added.push(obj.id);}const previous=projects.slice();projects.splice(0,projects.length,...copy);if(!persist()){projects.splice(0,projects.length,...previous);return say('Erro ao guardar / Save failed');}const max=Math.max(2,...projects.map(p=>/^APT\d+$/.test(p.id)?Number(p.id.slice(3))+1:2));localStorage.setItem(COUNTER,String(max));pick.value='';renderProjects();say('Importado: '+added.join(', ')+' · Sem fotografias/plantas anexas / Photos & attached plans not included');}catch(e){say('Importação rejeitada / Import rejected: '+e.message)}};
 })();
+</script><script id="v23-safe-deletion">
+(()=>{'use strict';
+const root=document.querySelector('main');
+const lang=()=>document.getElementById('ui-language')?.value==='en';
+const T=(pt,en)=>lang()?en:pt;
+const notify=s=>{if(typeof toast==='function')toast(s);else alert(s)};
+const check=(title,detail)=>confirm(T('Eliminar ','Delete ')+title+'?\n'+detail+'\n'+T('Esta ação não pode ser anulada.','This action cannot be undone.'));
+function copy(){return JSON.stringify(projects)}
+function commit(mutator){const backup=copy(),oldId=active?.id;mutator();if(persist())return true;projects=JSON.parse(backup);active=projects.find(p=>p.id===oldId)||null;notify(T('Não foi possível guardar a alteração.','Could not save the change.'));return false}
+function buttons(){
+ const configs=[
+ ['#project-list [data-open]','project'],
+ ['#plans-list [data-plan-download]','plan'],
+ ['#panels-list [data-panel]','panel'],
+ ['#circuits-list [data-circuit]','circuit'],
+ ['#passage-list [data-edit-passage]','passage'],
+ ['#conduit-list [data-conduit]','conduit'],
+ ['#cables-list [data-editc]','cable'],
+ ['#endpoint-list .step button','endpoint']
+ ];
+ for(const [selector,kind] of configs){for(const edit of root.querySelectorAll(selector)){
+ const row=edit.closest('.step,.card');if(!row||row.querySelector('[data-remove-kind="'+kind+'"]'))continue;
+ const b=document.createElement('button');b.type='button';b.className='btn danger';b.style.marginLeft='6px';b.textContent=T('Eliminar','Delete');b.dataset.removeKind=kind;
+ let id='';if(kind==='project')id=edit.dataset.open;
+ if(kind==='plan')id=edit.dataset.planDownload;
+ if(kind==='panel')id=edit.dataset.panel;
+ if(kind==='circuit')id=edit.dataset.circuit;
+ if(kind==='passage')id=edit.dataset.editPassage;
+ if(kind==='conduit')id=edit.dataset.conduit;
+ if(kind==='cable')id=edit.dataset.editc;
+ if(kind==='endpoint')id=row.querySelector('b')?.textContent.split(' · ')[0]||'';
+ b.dataset.removeId=id;
+ edit.insertAdjacentElement('afterend',b);
+ }}
+ const supply=document.getElementById('supply-save');
+ if(supply&&!document.getElementById('supply-remove')){const b=document.createElement('button');b.type='button';b.id='supply-remove';b.className='btn danger full';b.style.marginTop='10px';b.textContent=T('Eliminar dados de alimentação','Delete supply record');supply.insertAdjacentElement('afterend',b);b.onclick=()=>{if(!active?.supply)return notify(T('Sem dados para eliminar.','No supply record to delete.'));if(!check('M01 / IN01',T('A ficha de alimentação será eliminada; o quadro permanece.','The supply record will be deleted; the distribution board remains.')))return;if(commit(()=>delete active.supply)){page('detail');notify(T('Alimentação eliminada.','Supply record deleted.'))}}}
+}
+const observer=new MutationObserver(()=>buttons());observer.observe(root,{childList:true,subtree:true});
+document.getElementById('ui-language')?.addEventListener('change',()=>{root.querySelectorAll('[data-remove-kind]').forEach(b=>b.textContent=T('Eliminar','Delete'));const sr=document.getElementById('supply-remove');if(sr)sr.textContent=T('Eliminar dados de alimentação','Delete supply record')});
+function refresh(kind){if(kind==='project'){active=null;page('projects');return}if(['passage','conduit'].includes(kind)){page('conduits-editor');return}if(kind==='cable'){page('cables-page');document.getElementById('open-cables')?.click();return}if(kind==='endpoint'){document.getElementById('open-endpoints')?.click();return}page('detail')}
+function block(reason){notify(T('Não é possível eliminar: ','Cannot delete: ')+reason)}
+async function remove(kind,id){if(kind==='project'){
+ const p=projects.find(x=>x.id===id);if(!p)return;
+ const occupied=!!(p.plans?.length||p.panels?.length||p.circuits?.length||p.passages?.length||p.conduits?.length||p.cables?.length||p.endpoints?.length||p.supply||p.mapPlacements?.length||Object.keys(p.mapRoutes||{}).length);
+ if(occupied)return block(T('o projeto contém dados. Exporte a cópia JSON e remova primeiro os elementos relacionados.','the project contains records. Export a JSON backup and remove related records first.'));
+ if(!check(p.id+' — '+p.name,T('Eliminar projeto vazio.','Delete empty project.')))return;
+ if(commit(()=>{projects=projects.filter(x=>x.id!==id)}))refresh(kind);return;
+ }
+ if(!active)return;
+ const a=active;
+ if(kind==='panel'){
+ const panel=a.panels.find(x=>x.id===id);if(!panel)return;
+ if(a.circuits.some(c=>c.panel===id)||a.panels.some(p=>p.parent===id)||a.supply?.line?.to===id)return block(T('o quadro está ligado a circuitos, outro quadro ou à alimentação.','board is connected to circuits, another board, or the incoming supply.'));
+ if((a.conduits||[]).some(c=>c.start===id||c.end===id))return block(T('o quadro é mencionado numa conduta.','board is referenced by a conduit.'));
+ if(!check(id,T('A posição do quadro na planta também será removida.','Board placement on plans will also be removed.')))return;
+ if(commit(()=>{a.panels=a.panels.filter(x=>x.id!==id);a.mapPlacements=(a.mapPlacements||[]).filter(x=>!(x.kind==='panel'&&x.ref===id))}))refresh(kind);return;
+ }
+ if(kind==='circuit'){
+ if((a.cables||[]).some(c=>c.circuitId===id)||(a.endpoints||[]).some(e=>e.circuitId===id)||(a.conduits||[]).some(c=>c.circuit===id))return block(T('existem cabos, pontos ou condutas ligados ao circuito.','cables, points, or conduits are assigned to this circuit.'));
+ if(!check(id,T('Eliminar circuito sem ligações.','Delete circuit without links.')))return;
+ if(commit(()=>{a.circuits=a.circuits.filter(x=>x.id!==id)}))refresh(kind);return;
+ }
+ if(kind==='passage'){
+ const point=(a.passages||[]).find(x=>x.uid===id);if(!point)return;
+ if((a.conduits||[]).some(c=>c.point===point.mark))return block(T('existem condutas associadas a '+point.mark+'.','conduits are assigned to '+point.mark+'.'));
+ if(!check(point.mark,T('A posição nas plantas também será removida.','Its placement on plans will also be removed.')))return;
+ if(commit(()=>{a.passages=a.passages.filter(x=>x.uid!==id);a.mapPlacements=(a.mapPlacements||[]).filter(x=>!(x.kind==='passage'&&x.ref===id))}))refresh(kind);return;
+ }
+ if(kind==='conduit'){
+ const c=(a.conduits||[]).find(x=>x.uid===id);if(!c)return;
+ if((a.cables||[]).some(x=>(x.conduitUids||[]).includes(id)))return block(T('existem cabos associados a esta conduta.','cables are routed through this conduit.'));
+ if(c.photos?.length)return block(T('a conduta tem fotografias. Preserve-as antes de eliminar a conduta.','the conduit contains photos. Preserve them before deleting the conduit.'));
+ if(!check(c.mark,T('As rotas desenhadas serão apagadas. A marcação não será reutilizada.','Drawn routes will be removed. The marking will not be reused.')))return;
+ if(commit(()=>{a.conduitMarkHistory??=[];if(!a.conduitMarkHistory.includes(c.mark))a.conduitMarkHistory.push(c.mark);a.conduits=a.conduits.filter(x=>x.uid!==id);if(a.mapRoutes)delete a.mapRoutes[id];a.mapPlacements=(a.mapPlacements||[]).filter(x=>!(x.kind==='conduit'&&x.ref===id))}))refresh(kind);return;
+ }
+ if(kind==='cable'){
+ const c=(a.cables||[]).find(x=>x.uid===id);if(!c)return;
+ if(!check(c.label||c.spec||T('Cabo','Cable'),T('A ligação entre condutas e circuito será removida.','The conduit-to-circuit link will be removed.')))return;
+ if(commit(()=>{a.cables=a.cables.filter(x=>x.uid!==id)}))refresh(kind);return;
+ }
+ if(kind==='endpoint'){
+ const e=(a.endpoints||[]).find(x=>x.id===id);if(!e)return;
+ if(!check(id,T('As posições deste ponto nas plantas também serão removidas.','Point placements on plans will also be removed.')))return;
+ if(commit(()=>{a.endpoints=a.endpoints.filter(x=>x.id!==id);a.mapPlacements=(a.mapPlacements||[]).filter(x=>!(x.kind==='endpoint'&&x.ref===id))}))refresh(kind);return;
+ }
+ if(kind==='plan'){
+ const f=(a.plans||[]).find(x=>x.id===id);if(!f)return;
+ if(!check(f.label||f.name,T('O ficheiro anexo será também eliminado do armazenamento local.','The attached file will also be removed from local storage.')))return;
+ if(commit(()=>{a.plans=a.plans.filter(x=>x.id!==id)})){
+ try{const db0=await openDB();await new Promise((resolve,reject)=>{const tx=db0.transaction('plans','readwrite');tx.objectStore('plans').delete(id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}catch(e){notify(T('Registo eliminado; não foi possível limpar o ficheiro local.','Record removed; could not clean up local file.'))}
+ refresh(kind);
+ }return;
+ }
+}
+root.addEventListener('click',e=>{const btn=e.target.closest('[data-remove-kind]');if(!btn)return;e.preventDefault();remove(btn.dataset.removeKind,btn.dataset.removeId).catch(err=>{notify(T('Erro ao eliminar: ','Delete error: ')+String(err.message||err))})});
+buttons();
+})();
 </script></body></html>
