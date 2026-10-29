@@ -230,7 +230,39 @@ function render(){if(!active)return;const nav=E('map-context').value==='navigato
  note.textContent='Sem planta associada a este projeto. Não utilizar a planta de Aroeiro. / No architectural plan assigned to this project; Aroeiro drawings are not used.';
  note.style.display=missingBase?'':'none';
  if(active.mapSource==='carcavelos'&&isCarcavelosProject()){note.textContent='Carcavelos: planta histórica recuperada (base da rede T2). Posições dos pontos importados ainda não verificadas / Historic plan recovered; imported point positions not yet verified.';note.style.display='';}
- E('map-background').setAttribute('href',(active.mapSource==='aroeiro'&&isAroeiroProject()&&backgroundData[plan])?'data:image/svg+xml;base64,'+backgroundData[plan]:(active.mapSource==='carcavelos'&&isCarcavelosProject())?'data:image/svg+xml;base64,'+carcavelosBase:'data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%201000%201200%22%3E%3Crect%20width=%221000%22%20height=%221200%22%20fill=%22%23f3f6f9%22/%3E%3C/svg%3E');layers.replaceChildren();draft.replaceChildren();const by=objRefs();for(const p of active.mapPlacements||[]){if(p.plan!==plan)continue;const a=by.find(x=>x.kind===p.kind&&x.ref===p.ref);if(a)symbol(p.x,p.y,a.label.split(' — ')[0],p.kind)}for(const c of (active.conduits||[])){const routes=active.mapRoutes?.[c.uid]?.[plan]||[];for(const line of routes){if(line.length<2)continue;shape('polyline',{points:line.map(p=>p.x+','+p.y).join(' '),fill:'none',stroke:'#1b86b3','stroke-width':6,'stroke-linecap':'round','stroke-linejoin':'round'},layers)} }if(draftPoint&&mode==='place') {const a=target();if(a)symbol(draftPoint.x,draftPoint.y,a.label.split(' — ')[0],a.kind,draft,true)}if(points.length){shape('polyline',{points:points.map(p=>p.x+','+p.y).join(' '),fill:'none',stroke:'#d58b22','stroke-width':6,'stroke-dasharray':'12 9','stroke-linecap':'round'},draft);for(const p of points)shape('circle',{cx:p.x,cy:p.y,r:7,fill:'#fff',stroke:'#d58b22','stroke-width':3},draft)}E('map-confirm').disabled=!(mode==='place'&&draftPoint||mode==='route'&&points.length>=2);E('map-help').textContent=mode==='view'?'Ver / View: toque no modo Colocar ou Traçar para editar.':mode==='place'?'Colocar / Place: toque na planta, confirme para guardar.':'Traçar / Route: toque em cada mudança de direção (mínimo 2 pontos), confirme para guardar o trecho.'}
+
+ // Render Aroeiro's architecture as native SVG elements, not a nested data-URL
+ // image: iOS Safari may leave nested SVG images blank. This does not touch
+ // placements, cable routes or persisted project data.
+ let architecture=E('aroeiro-architecture');
+ if(!architecture){
+   architecture=document.createElementNS('http://www.w3.org/2000/svg','g');
+   architecture.id='aroeiro-architecture';
+   E('plan-v16-svg').insertBefore(architecture,E('map-existing'));
+ }
+ architecture.replaceChildren();
+ const aroeiroDrawing=active.mapSource==='aroeiro'&&isAroeiroProject()&&backgroundData[plan];
+ if(aroeiroDrawing){
+   try{
+     const raw=atob(backgroundData[plan]);
+     const bytes=Uint8Array.from(raw,ch=>ch.charCodeAt(0));
+     const svgText=new TextDecoder('utf-8').decode(bytes);
+     const doc=new DOMParser().parseFromString(svgText,'image/svg+xml');
+     if(doc.querySelector('parsererror'))throw new Error('Invalid embedded drawing');
+     for(const child of Array.from(doc.documentElement.children)){
+       architecture.appendChild(document.importNode(child,true));
+     }
+     E('map-background').style.display='none';
+   }catch(err){
+     E('map-background').style.display='';
+     E('map-background').setAttribute('href','data:image/svg+xml;base64,'+backgroundData[plan]);
+     console.error('Aroeiro plan could not be rendered',err);
+   }
+ }else{
+   E('map-background').style.display='';
+   E('map-background').setAttribute('href',active.mapSource==='carcavelos'&&isCarcavelosProject()?'data:image/svg+xml;base64,'+carcavelosBase:'data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%201000%201200%22%3E%3Crect%20width=%221000%22%20height=%221200%22%20fill=%22%23f3f6f9%22/%3E%3C/svg%3E');
+ }
+layers.replaceChildren();draft.replaceChildren();const by=objRefs();for(const p of active.mapPlacements||[]){if(p.plan!==plan)continue;const a=by.find(x=>x.kind===p.kind&&x.ref===p.ref);if(a)symbol(p.x,p.y,a.label.split(' — ')[0],p.kind)}for(const c of (active.conduits||[])){const routes=active.mapRoutes?.[c.uid]?.[plan]||[];for(const line of routes){if(line.length<2)continue;shape('polyline',{points:line.map(p=>p.x+','+p.y).join(' '),fill:'none',stroke:'#1b86b3','stroke-width':6,'stroke-linecap':'round','stroke-linejoin':'round'},layers)} }if(draftPoint&&mode==='place') {const a=target();if(a)symbol(draftPoint.x,draftPoint.y,a.label.split(' — ')[0],a.kind,draft,true)}if(points.length){shape('polyline',{points:points.map(p=>p.x+','+p.y).join(' '),fill:'none',stroke:'#d58b22','stroke-width':6,'stroke-dasharray':'12 9','stroke-linecap':'round'},draft);for(const p of points)shape('circle',{cx:p.x,cy:p.y,r:7,fill:'#fff',stroke:'#d58b22','stroke-width':3},draft)}E('map-confirm').disabled=!(mode==='place'&&draftPoint||mode==='route'&&points.length>=2);E('map-help').textContent=mode==='view'?'Ver / View: toque no modo Colocar ou Traçar para editar.':mode==='place'?'Colocar / Place: toque na planta, confirme para guardar.':'Traçar / Route: toque em cada mudança de direção (mínimo 2 pontos), confirme para guardar o trecho.'}
 function setMode(m){if(m!=='place'&&quickDraft)cleanupQuick();mode=m;points=[];draftPoint=null;render()}
 function startInfrastructure(kind){if(!active||E('map-context').value==='navigator')return;cleanupQuick();const id=kind==='panel'?nextPanel():(()=>{const used=new Set((active.passages||[]).map(p=>p.mark));let n=1;while(used.has('P'+n))n++;return 'P'+n})();infraDraft={kind,id,uid:'tmp_'+Date.now().toString(36)};const sel=E('map-target');sel.add(new Option(id+' — Novo / New',kind+'|'+(kind==='panel'?id:infraDraft.uid)));sel.value=kind+'|'+(kind==='panel'?id:infraDraft.uid);mode='place';points=[];draftPoint=null;render();toast('Toque na planta / Tap the plan')}
 E('map-quick-passage').onclick=()=>startInfrastructure('passage');
