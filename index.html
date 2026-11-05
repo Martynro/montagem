@@ -411,8 +411,15 @@ function block(reason){notify(T('Não é possível eliminar: ','Cannot delete: '
 async function remove(kind,id){if(kind==='project'){
  const p=projects.find(x=>x.id===id);if(!p)return;
  const occupied=!!(p.plans?.length||p.panels?.length||p.circuits?.length||p.passages?.length||p.conduits?.length||p.cables?.length||p.endpoints?.length||p.supply||p.mapPlacements?.length||Object.keys(p.mapRoutes||{}).length);
- if(occupied)return block(T('o projeto contém dados. Exporte a cópia JSON e remova primeiro os elementos relacionados.','the project contains records. Export a JSON backup and remove related records first.'));
- if(!check(p.id+' — '+p.name,T('Eliminar projeto vazio.','Delete empty project.')))return;
+ if(occupied){
+  const details=T('Este projeto contém dados. Antes de continuar, guarde uma cópia JSON. Para confirmar a eliminação definitiva, escreva exatamente o ID do projeto:',
+                  'This project contains records. Save a JSON backup before continuing. To confirm permanent deletion, type the exact project ID:');
+  const typed=prompt(T('Eliminar projeto com dados','Delete populated project')+'\n'+p.id+' — '+p.name+'\n\n'+details,p.id==='__never__'?'': '');
+  if(typed===null)return;
+  if(typed.trim()!==p.id)return block(T('o ID introduzido não corresponde. O projeto foi mantido.','the entered ID does not match. The project was kept.'));
+  if(!check(p.id+' — '+p.name,T('TODOS os registos deste projeto serão eliminados deste navegador. Outros projetos não serão afetados. Os ficheiros guardados separadamente não fazem parte deste processo.',
+                                  'ALL records of this project will be removed from this browser. Other projects are not affected. Separately stored files are not part of this action.')))return;
+ }else if(!check(p.id+' — '+p.name,T('Eliminar projeto vazio.','Delete empty project.')))return;
  if(commit(()=>{projects=projects.filter(x=>x.id!==id)}))refresh(kind);return;
  }
  if(!active)return;
